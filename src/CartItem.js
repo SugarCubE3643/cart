@@ -4,15 +4,6 @@ import deleteIcon from "./delete.png";
 import React from "react";
 
 class CartItem extends React.Component {
-  constructor() {
-    super();
-    this.state = {
-      price: 999,
-      title: "Mobile Phone",
-      qty: 1,
-      img: "",
-    };
-  }
   increaseQuantity = () => {
     // Set state uses shallow merging and then the component is re rendered (setState is asynchronus)
     // Set state acts as synchronously inside api calls and promises etc
@@ -44,7 +35,7 @@ class CartItem extends React.Component {
     });
   };
   render() {
-    const { price, title, qty } = this.state;
+    const { price, title, qty } = this.props.product;
     return (
       <div className="cart-item">
         <div className="left-block">
