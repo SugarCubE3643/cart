@@ -1,56 +1,73 @@
 import React from "react";
 import Cart from "./Cart";
 import Navbar from "./Navbar";
-import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getDocs } from 'firebase/firestore/lite';
-
-// Your web app's Firebase configuration
-// Problem : projectId is not accepting environment variable
-const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY,
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-  projectId: "cart-28c29",
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.FIREBASE_APP_ID
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+import firebaseApp from "./firebase";
+import {
+  getFirestore,
+  collection,
+  query,
+  onSnapshot,
+  addDoc,
+  runTransaction,
+  doc,
+  deleteDoc,
+} from "firebase/firestore";
 
 class App extends React.Component {
-  constructor () {
+  constructor() {
     super();
     this.state = {
       products: [],
-      loading: true
+      loading: true,
+      // unsubscribe: () => {}
     };
   }
-  async getProducts(db){
-    const productsCollection = collection(db, 'products');
-    const productsSnapshot = await getDocs(productsCollection);
-    const productsList = productsSnapshot.docs.map( doc => {
-      const data = doc.data();
-      data['id'] = doc.id;
-      return data;
+  async getProducts() {
+    const db = getFirestore(firebaseApp);
+    const productsCollection = collection(db, "products");
+    const productsCollectionQuery = query(productsCollection);
+    // const unsubscribe =
+    onSnapshot(productsCollectionQuery, (productsSnapshot) => {
+      const productsList = productsSnapshot.docs.map((doc) => {
+        const data = doc.data();
+        data["id"] = doc.id;
+        return data;
+      });
+      this.setState({ products: productsList, loading: false });
     });
-    this.setState({ products: productsList, loading: false });
   }
   componentDidMount() {
-    this.getProducts(db);
+    this.getProducts();
   }
-  handleIncreaseQuantity = (product) => {
+  componentWillUnmount() {
+    // this.unsubscribe();
+  }
+  handleIncreaseQuantity = async (product) => {
     const { products } = this.state;
     const index = products.indexOf(product);
+    // products[index].qty += 1;
 
-    products[index].qty += 1;
+    // this.setState({
+    //   products,
+    // });
 
-    this.setState({
-      products
-    })
-  }
-  handleDecreaseQuantity = (product) => {
+    const db = getFirestore(firebaseApp);
+    const docRef = doc(db, "products", products[index].id);
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const fetchedDoc = await transaction.get(docRef);
+        if (!fetchedDoc.exists()) {
+          throw ErrorEvent("Document does not exist!");
+        }
+        const newQty = fetchedDoc.data().qty + 1;
+        transaction.update(docRef, { qty: newQty });
+      });
+    } catch (e) {
+      console.log("Transaction failed: ", e);
+    }
+  };
+  handleDecreaseQuantity = async (product) => {
     const { products } = this.state;
     const index = products.indexOf(product);
 
@@ -58,21 +75,41 @@ class App extends React.Component {
       return;
     }
 
-    products[index].qty -= 1;
+    // products[index].qty -= 1;
 
-    this.setState({
-      products
-    })
-  }
-  handleDeleteProduct = (id) => {
-    const { products } = this.state;
+    // this.setState({
+    //   products,
+    // });
 
-    const items = products.filter((item) => item.id !== id);
+    const db = getFirestore(firebaseApp);
+    const docRef = doc(db, "products", products[index].id);
 
-    this.setState({
-      products: items
-    })
-  }
+    try {
+      await runTransaction(db, async (transaction) => {
+        const fetchedDoc = await transaction.get(docRef);
+        if (!fetchedDoc.exists()) {
+          throw ErrorEvent("Document does not exist!");
+        }
+        const newQty = fetchedDoc.data().qty - 1;
+        transaction.update(docRef, { qty: newQty });
+      });
+    } catch (e) {
+      console.log("Transaction failed: ", e);
+    }
+  };
+  handleDeleteProduct = async (id) => {
+    // const { products } = this.state;
+
+    // const product = products.filter((item) => item.id !== id);
+
+    // this.setState({
+    //   products: items,
+    // });
+
+    const db = getFirestore(firebaseApp);
+    const docRef = doc(db, "products", id);
+    await deleteDoc(docRef);
+  };
 
   getCartCount = () => {
     const { products } = this.state;
@@ -81,26 +118,39 @@ class App extends React.Component {
 
     products.forEach((product) => {
       count += product.qty;
-    })
+    });
 
     return count;
-  }
+  };
   getCartTotal = () => {
     const { products } = this.state;
 
     let cartTotal = 0;
 
     products.forEach((product) => {
-      cartTotal = cartTotal + product.qty * product.price
-    })
+      cartTotal = cartTotal + product.qty * product.price;
+    });
 
     return cartTotal;
-  }
-  render () {
+  };
+
+  addProduct = async () => {
+    const db = getFirestore(this.props.app);
+    await addDoc(collection(db, "products"), {
+      img: "https://images.unsplash.com/photo-1577553698923-17f1a80ce5bc?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxzZWFyY2h8Nnx8d2FzaGluZyUyMG1hY2hpbmV8ZW58MHx8MHx8&auto=format&fit=crop&w=2000&q=60",
+      price: 43646,
+      qty: 3,
+      title: "Washing Machine",
+    });
+  };
+  render() {
     const { products, loading } = this.state;
     return (
       <div className="App">
         <Navbar count={this.getCartCount()} />
+        <button onClick={this.addProduct} style={{ padding: 20, fontSize: 20 }}>
+          Add a product
+        </button>
         <Cart
           products={products}
           onIncreaseQuantity={this.handleIncreaseQuantity}
@@ -108,7 +158,9 @@ class App extends React.Component {
           onDeleteProduct={this.handleDeleteProduct}
         />
         {loading && <h1>Loading Products...</h1>}
-        <div style={ {padding: 10, fontSize: 20} }>TOTAL: {this.getCartTotal()} </div>
+        <div style={{ padding: 10, fontSize: 20 }}>
+          TOTAL: {this.getCartTotal()}{" "}
+        </div>
       </div>
     );
   }
